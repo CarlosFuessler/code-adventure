@@ -1,0 +1,5 @@
+{
+  "variants": {
+    "": { "model": "code_adventure:block/code_pc" }
+  }
+}

@@ -7,6 +7,11 @@ import net.minecraft.resources.ResourceLocation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.adventure.registry.ModBlocks;
+import com.adventure.registry.ModItems;
+import com.adventure.registry.ModMenus;
+import com.adventure.network.ModNetworking;
+
 public class Code_Adventure implements ModInitializer {
 	public static final String MOD_ID = "code_adventure";
 
@@ -17,10 +22,11 @@ public class Code_Adventure implements ModInitializer {
 
 	@Override
 	public void onInitialize() {
-		// This code runs as soon as Minecraft is in a mod-load-ready state.
-		// However, some things (like resources) may still be uninitialized.
-		// Proceed with mild caution.
 
+		ModBlocks.register();
+		ModItems.register();
+		ModMenus.register();
+		ModNetworking.registerC2S();
 		LOGGER.info("Hello Fabric world!");
 	}
 
