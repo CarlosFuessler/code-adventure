@@ -1,13 +1,15 @@
 package com.adventure.quest;
 
-public record Problem (
+import java.util.Map;
+
+public record Problem(
         String id,
         int level,
         String title,
         String prompt,
-        String starterCode,
-        String language,
-        int xpCost
-){}
-
-
+        int xpCost,
+        Map<String, String> options,
+        String correctOption,
+        String explanation
+) {
+}

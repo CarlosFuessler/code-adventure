@@ -11,16 +11,22 @@ import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
 public class CodePcScreen extends AbstractContainerScreen<CodePcMenu> {
 
     public record PcState(
             int boughtLevel, int xpLevel, String message,
             boolean hasNext, int nextLevel, int nextCost, String nextId, String nextTitle,
-            boolean hasCurrent, String curId, String curTitle, String curPrompt, String curStarter, String curLang
+            boolean hasCurrent, String curId, String curTitle, String curPrompt, Map<String, String> options,
+            boolean curSolved
     ) {}
 
     private PcState state;
-    private CodeEditor editor;
+    private String selectedOption = "";
+    private final List<Button> optionButtons = new ArrayList<>();
 
     public CodePcScreen(CodePcMenu menu, Inventory playerInventory, Component title) {
         super(menu, playerInventory, title);
@@ -29,39 +35,62 @@ public class CodePcScreen extends AbstractContainerScreen<CodePcMenu> {
     }
 
     public void applyState(PcState newState) {
+        boolean problemChanged = this.state == null
+                || !this.state.hasCurrent
+                || !newState.hasCurrent
+                || !this.state.curId.equals(newState.curId);
         this.state = newState;
-        // initialize editor content from starter code when we receive a current problem
-        if (newState.hasCurrent && this.editor != null) {
-            this.editor.setText(newState.curStarter == null ? "" : newState.curStarter);
+        if (problemChanged) {
+            this.selectedOption = "";
         }
+        rebuildWidgets();
     }
 
     @Override
     protected void init() {
         super.init();
+        rebuildWidgets();
+    }
+
+    @Override
+    protected void rebuildWidgets() {
+        this.clearWidgets();
+        optionButtons.clear();
+
         int x = this.leftPos;
         int y = this.topPos;
-
-        this.editor = new CodeEditor(this.font, x + 8, y + 95, this.imageWidth - 16, 85);
-        if (state != null && state.hasCurrent) {
-            this.editor.setText(state.curStarter == null ? "" : state.curStarter);
-        }
 
         this.addRenderableWidget(Button.builder(Component.literal("Buy Level"), b -> {
             ClientPlayNetworking.send(ModNetworking.BUY_LEVEL, PacketByteBufs.create());
         }).bounds(x + 10, y + 190, 80, 20).build());
 
         this.addRenderableWidget(Button.builder(Component.literal("Submit"), b -> {
-            if (state != null && state.hasCurrent && this.editor != null) {
+            if (state != null && state.hasCurrent && !state.curSolved && !selectedOption.isEmpty()) {
                 FriendlyByteBuf buf = PacketByteBufs.create();
                 buf.writeUtf(state.curId);
-                buf.writeUtf(this.editor.getText(), 32767);
+                buf.writeUtf(selectedOption, 16);
                 ClientPlayNetworking.send(ModNetworking.SUBMIT, buf);
             }
         }).bounds(x + 100, y + 190, 80, 20).build());
 
         this.addRenderableWidget(Button.builder(Component.literal("Close"), b -> this.onClose())
                 .bounds(x + 230, y + 190, 80, 20).build());
+
+        if (state != null && state.hasCurrent && !state.curSolved) {
+            int optY = y + 95;
+            for (Map.Entry<String, String> entry : state.options.entrySet()) {
+                String key = entry.getKey();
+                String value = entry.getValue();
+                String label = (key.equals(selectedOption) ? "[x] " : "[ ] ") + key + ": " + trim(value, 36);
+                Button btn = Button.builder(Component.literal(label), b -> {
+                    this.selectedOption = key;
+                    rebuildWidgets();
+                }).bounds(x + 10, optY, this.imageWidth - 20, 20).build();
+                optionButtons.add(btn);
+                this.addRenderableWidget(btn);
+                optY += 22;
+            }
+        }
     }
 
     @Override
@@ -76,9 +105,6 @@ public class CodePcScreen extends AbstractContainerScreen<CodePcMenu> {
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
         this.renderBackground(guiGraphics);
         super.render(guiGraphics, mouseX, mouseY, partialTick);
-        if (this.editor != null) {
-            this.editor.render(guiGraphics);
-        }
         this.renderTooltip(guiGraphics, mouseX, mouseY);
     }
 
@@ -104,18 +130,25 @@ public class CodePcScreen extends AbstractContainerScreen<CodePcMenu> {
         y += 14;
 
         if (state.hasCurrent) {
-            guiGraphics.drawString(this.font, "Current: " + state.curTitle + " [" + state.curLang + "]", 8, y, 0xFFFFFF, false);
+            String titleText = "Current: " + state.curTitle + (state.curSolved ? " [SOLVED]" : "");
+            guiGraphics.drawString(this.font, titleText, 8, y, state.curSolved ? 0x80FF80 : 0xFFFFFF, false);
             y += 12;
-            // Render prompt (simple single-line draw; for long prompts split/wrap later)
             guiGraphics.drawString(this.font, trim(state.curPrompt, 50), 8, y, 0xDDDDDD, false);
             y += 12;
-            guiGraphics.drawString(this.font, "Code editor:", 8, y, 0xAAAAAA, false);
+
+            if (state.curSolved) {
+                guiGraphics.drawString(this.font, "✔ CORRECT!", this.imageWidth / 2 - 34, 108, 0x55FF55, true);
+                guiGraphics.drawString(this.font, "Problem completed", this.imageWidth / 2 - 45, 128, 0xCCFFCC, false);
+                guiGraphics.drawString(this.font, "Buy the next level to continue", this.imageWidth / 2 - 72, 142, 0xAAAAAA, false);
+            } else {
+                guiGraphics.drawString(this.font, "Choose an answer:", 8, y, 0xAAAAAA, false);
+            }
         } else {
             guiGraphics.drawString(this.font, "Buy a level to unlock a coding problem.", 8, y, 0xDDDDDD, false);
         }
 
-        if (state.message != null && !state.message.isEmpty()) {
-            guiGraphics.drawString(this.font, "Status: " + state.message, 8, this.imageHeight - 40, 0x55FFFF, false);
+        if (state.message != null && !state.message.isEmpty() && !(state.hasCurrent && state.curSolved)) {
+            guiGraphics.drawString(this.font, "Status: " + trim(state.message, 50), 8, this.imageHeight - 40, 0x55FFFF, false);
         }
     }
 
@@ -123,18 +156,4 @@ public class CodePcScreen extends AbstractContainerScreen<CodePcMenu> {
         if (s == null) return "";
         return s.length() <= max ? s : s.substring(0, max - 3) + "...";
     }
-
-    @Override public boolean charTyped(char c, int modifiers) {
-        if (editor != null && editor.charTyped(c, modifiers)) return true;
-        return super.charTyped(c, modifiers);
-    }
-    @Override public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (editor != null && editor.keyPressed(keyCode, scanCode, modifiers)) return true;
-        return super.keyPressed(keyCode, scanCode, modifiers);
-    }
-    @Override public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (editor != null && editor.mouseClicked(mouseX, mouseY, button)) return true;
-        return super.mouseClicked(mouseX, mouseY, button);
-    }
-
 }

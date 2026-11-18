@@ -6,6 +6,9 @@ import com.adventure.network.ModNetworking;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.Minecraft;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 public class ClientNetworking {
 
     public static void registerS2C() {
@@ -25,19 +28,26 @@ public class ClientNetworking {
             }
 
             boolean hasCurrent = buf.readBoolean();
-            String curId = "", curTitle = "", curPrompt = "", curStarter = "", curLang = "";
+            String curId = "", curTitle = "", curPrompt = "";
+            Map<String, String> options = new LinkedHashMap<>();
+            boolean curSolved = false;
             if (hasCurrent) {
                 curId = buf.readUtf();
                 curTitle = buf.readUtf();
                 curPrompt = buf.readUtf();
-                curStarter = buf.readUtf();
-                curLang = buf.readUtf();
+                int optionCount = buf.readInt();
+                for (int i = 0; i < optionCount; i++) {
+                    String key = buf.readUtf();
+                    String value = buf.readUtf();
+                    options.put(key, value);
+                }
+                curSolved = buf.readBoolean();
             }
 
             final var state = new CodePcScreen.PcState(
-                boughtLevel, xpLevel, message,
-                hasNext, nextLevel, nextCost, nextId, nextTitle,
-                hasCurrent, curId, curTitle, curPrompt, curStarter, curLang
+                    boughtLevel, xpLevel, message,
+                    hasNext, nextLevel, nextCost, nextId, nextTitle,
+                    hasCurrent, curId, curTitle, curPrompt,curSolved, options
             );
 
             client.execute(() -> {
